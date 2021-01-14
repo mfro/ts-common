@@ -1,4 +1,4 @@
-export type Event<T> = {
+export type Event<T = void> = {
   _event: (_: T) => T;
 
   callbacks: ((value: T) => void)[];

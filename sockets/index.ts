@@ -1,4 +1,4 @@
-import * as WebSocket from 'ws';
+import * as ws from 'ws';
 import { emit, Event } from '../events';
 
 export type PacketBody =
@@ -71,54 +71,42 @@ export namespace Dispatch {
   }
 }
 
-export interface Client {
-  send(message: Packet<void>): void;
-  send<T extends PacketBody>(message: Packet<T>, value: T): void;
+const socket_events = new WeakMap<ws | WebSocket, Map<Packet<any>, Event<any>>>();
 
-  receive<T extends void | PacketBody>(ty: Packet<T>): Event<T>;
-
-  close(): void;
-}
-
-export function Client(url: string): Client {
-  let packets = new Map<Packet<any>, Event<any>>();
-
-  let closed = Event();
-
-  let socket = new WebSocket(url);
-
-  socket.addEventListener('close', e => emit(closed));
+function setup_events(socket: WebSocket) {
+  let events = new Map<Packet<any>, Event<any>>();
 
   socket.addEventListener('message', e => {
-    const parsed = JSON.parse(e.data);
-    let [packet, value] = Packet.unseal(parsed);
-
-    let ev = packets.get(packet);
-    if (ev) {
-      emit(ev, value);
-    }
+    try {
+      let [packet, value] = Packet.unseal(JSON.parse(e.data));
+      let event = events.get(packet);
+      if (event) {
+        emit(event, value);
+      }
+    } catch { }
   });
 
-  return {
-    send<T extends void | PacketBody>(message: Packet<T>, value?: T): void {
-      let sealed = Packet.seal(message as any, value);
-      socket.send(JSON.stringify(sealed));
-    },
-
-    receive(ty) {
-      let e = packets.get(ty);
-      if (!e) packets.set(ty, e = Event());
-
-      return e;
-    },
-
-    close() {
-      socket.close();
-    },
-  };
+  return events;
 }
 
-export function Server(base: WebSocket.Server, handler: (c: Client, params: Map<string, string>) => void) {
+export function send(socket: ws | WebSocket, ty: Packet<void>): void;
+export function send<T extends PacketBody>(socket: ws | WebSocket, ty: Packet<T>, value: T): void;
+export function send<T extends void | PacketBody>(socket: ws | WebSocket, ty: Packet<T>, value?: T): void {
+  let sealed = Packet.seal(ty as any, value);
+  socket.send(JSON.stringify(sealed));
+}
+
+export function receive<T extends void | PacketBody>(socket: ws | WebSocket, ty: Packet<T>): Event<T> {
+  let map = socket_events.get(socket);
+  if (!map) socket_events.set(socket, map = setup_events(socket as WebSocket));
+
+  let event = map.get(ty);
+  if (!event) map.set(ty, event = Event());
+
+  return event;
+}
+
+export function Server(base: ws.Server, handler: (c: ws, params: Map<string, string>) => void) {
   base.on('connection', (socket, request) => {
     let params: Map<string, string>;
     if (request.url) {
@@ -128,39 +116,6 @@ export function Server(base: WebSocket.Server, handler: (c: Client, params: Map<
       params = new Map();
     }
 
-    let packets = new Map<Packet<any>, Event<any>>();
-    let closed = Event();
-
-    socket.addEventListener('close', e => emit(closed));
-
-    socket.addEventListener('message', e => {
-      const parsed = JSON.parse(e.data);
-      let [packet, value] = Packet.unseal(parsed);
-
-      let ev = packets.get(packet);
-      if (ev) {
-        emit(ev, value);
-      }
-    });
-
-    let client: Client = {
-      send<T extends void | PacketBody>(message: Packet<T>, value?: T): void {
-        let sealed = Packet.seal(message as any, value);
-        socket.send(JSON.stringify(sealed));
-      },
-
-      receive(ty) {
-        let e = packets.get(ty);
-        if (!e) packets.set(ty, e = Event());
-
-        return e;
-      },
-
-      close() {
-        socket.close();
-      },
-    };
-
-    handler(client, params);
+    handler(socket, params);
   });
 }
