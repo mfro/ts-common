@@ -1,0 +1,12 @@
+{
+  "name": "@mfro/ts-common",
+  "version": "1.0.0",
+  "license": "MIT",
+  "main": "src/lib.ts",
+  "peerDependencies": {
+    "ws": "^7.4.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^7.4.0"
+  }
+}
