@@ -4,3 +4,7 @@ export function assert(condition: boolean, message: string): asserts condition {
     throw new Error(message);
   }
 }
+
+export function todo(message: string): never {
+  assert(false, message);
+}
